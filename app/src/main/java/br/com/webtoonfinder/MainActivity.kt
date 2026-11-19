@@ -32,7 +32,7 @@ class MainActivity : Activity() {
         info = TextView(this).apply { text = "Encontre webtoons para ler em português"; textSize=13f; setTextColor(Color.LTGRAY); setPadding(18,0,18,10) }
         root.addView(info)
         val searchRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(10,4,10,8) }
-        address = EditText(this).apply { hint = "Buscar título ou colar endereço"; singleLine = true; setTextColor(Color.WHITE); setHintTextColor(Color.GRAY); setBackgroundColor(Color.rgb(39,39,52)); setPadding(12,4,12,4) }
+        address = EditText(this).apply { hint = "Buscar título ou colar endereço"; setSingleLine(true); setTextColor(Color.WHITE); setHintTextColor(Color.GRAY); setBackgroundColor(Color.rgb(39,39,52)); setPadding(12,4,12,4) }
         searchRow.addView(address, LinearLayout.LayoutParams(0, dp(48), 1f))
         searchRow.addView(button("BUSCAR") { search(address.text.toString()) })
         root.addView(searchRow)
@@ -108,7 +108,7 @@ class MainActivity : Activity() {
     }
     private fun saveHistory(url: String) {
         val list = prefs.getStringSet("history", emptySet())!!.toMutableSet(); list.remove(url); list.add(url)
-        prefs.edit().putStringSet("history", list.takeLast(40).toSet()).apply()
+        prefs.edit().putStringSet("history", list.toList().takeLast(40).toSet()).apply()
     }
     private fun showSaved(key: String) {
         val list = prefs.getStringSet(key, emptySet())!!.toList().reversed()
