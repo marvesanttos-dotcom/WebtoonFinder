@@ -1,1 +1,0 @@
-Build automatizado pelo GitHub Actions. O APK de depuração será disponibilizado nos artefatos da execução.
