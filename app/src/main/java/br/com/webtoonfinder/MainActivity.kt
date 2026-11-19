@@ -101,8 +101,8 @@ class MainActivity : Activity() {
             val found = linkedMapOf<String, ToonResult>()
             val errors = mutableListOf<String>()
             val queries = linkedSetOf(
-                "\"$q\" webtoon", "$q webtoon português ler", "$q manhwa português capítulos",
-                "$q quadrinho online português", "$q webtoon chapters episodes", "$q comic read online"
+                "\"$q\" webtoon português", "$q webtoon ler online português", "$q manhwa traduzido português",
+                "$q capítulos português", "$q quadrinho online português", "$q obra completa webtoon português"
             )
             val engines = listOf("duckduckgo", "bing")
             for (term in queries) for (engine in engines) {
@@ -111,7 +111,7 @@ class MainActivity : Activity() {
                     val doc = Jsoup.connect(base + URLEncoder.encode(term, "UTF-8"))
                         .userAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
                         .header("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
-                        .timeout(18000).followRedirects(true).maxBodySize(2 * 1024 * 1024).get()
+                        .timeout(12000).followRedirects(true).maxBodySize(2 * 1024 * 1024).get()
                     val anchors = if (engine == "duckduckgo") doc.select("a.result__a, a[data-testid=result-title-a]") else doc.select("li.b_algo h2 a, a[href].tilk")
                     for (a in anchors) {
                         var href = a.absUrl("href").ifBlank { a.attr("href") }.trim()
