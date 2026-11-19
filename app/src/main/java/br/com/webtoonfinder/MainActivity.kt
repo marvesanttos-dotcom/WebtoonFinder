@@ -117,16 +117,26 @@ class MainActivity : Activity() {
                     connection.readTimeout = 15000
                     val html = connection.inputStream.bufferedReader().use { it.readText() }
                     connection.disconnect()
-                    val resultBlocks = Regex("(?is)<div[^>]*class=[\\\"'][^\\\"']*result[^\\\"']*[\\\"'][^>]*>.*?</div>\\s*</div>").findAll(html)
-                    for (blockMatch in resultBlocks) {
-                        val block = blockMatch.value
-                        val linkMatch = Regex("(?is)<a[^>]*class=[\\\"'][^\\\"']*result__a[^\\\"']*[\\\"'][^>]*href=[\\\"']([^\\\"']+)[\\\"'][^>]*>(.*?)</a>").find(block) ?: continue
-                        val href = linkMatch.groupValues[1].replace("&amp;", "&")
-                        val title = linkMatch.groupValues[2].replace(Regex("<[^>]+>"), "").trim()
-                        val snippet = Regex("(?is)class=[\\\"'][^\\\"']*result__snippet[^\\\"']*[\\\"'][^>]*>(.*?)</").find(block)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"), "")?.trim().orEmpty()
+                    // Extrai links individualmente; não depende da estrutura aninhada dos cartões.
+                    val anchors = Regex("(?is)<a\\b([^>]*)>(.*?)</a>").findAll(html)
+                    for (anchor in anchors) {
+                        val attrs = anchor.groupValues[1]
+                        val classes = Regex("(?i)class\\s*=\\s*[\"']([^\"']*)[\"']").find(attrs)?.groupValues?.get(1).orEmpty()
+                        if (!classes.contains("result__a")) continue
+                        var href = Regex("(?i)href\\s*=\\s*[\"']([^\"']+)[\"']").find(attrs)?.groupValues?.get(1) ?: continue
+                        href = href.replace("&amp;", "&")
+                        if (href.startsWith("//")) href = "https:$href"
+                        if (href.contains("duckduckgo.com/l/")) {
+                            val target = Regex("[?&]uddg=([^&]+)").find(href)?.groupValues?.get(1)
+                            if (target != null) href = try { java.net.URLDecoder.decode(target, "UTF-8") } catch (_: Exception) { target }
+                        }
+                        val title = anchor.groupValues[2].replace(Regex("<[^>]+>"), "").replace("&amp;", "&").replace("&quot;", "\"").trim()
+                        val tailStart = anchor.range.last + 1
+                        val tail = html.substring(tailStart, minOf(html.length, tailStart + 1800)).substringBefore("result__a")
+                        val snippet = Regex("(?is)result__snippet[^>]*>(.*?)</").find(tail)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"), "")?.replace("&amp;", "&")?.trim().orEmpty()
                         val all = "$title $snippet"
                         val count = Regex("(?i)(?:cap[ií]tulos?|chapters?|eps(?:is[oó]dios?)?)\\s*[:#-]?\\s*(\\d{1,4})").findAll(all).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
-                        if (href.startsWith("http") && title.isNotBlank() && !href.contains("duckduckgo.com")) {
+                        if ((href.startsWith("http://") || href.startsWith("https://")) && title.isNotBlank() && !href.contains("duckduckgo.com")) {
                             val key = href.substringBefore("#").trimEnd('/')
                             found[key] = ToonResult(title, href, count, snippet)
                         }
