@@ -14,7 +14,6 @@ import android.graphics.Typeface
 import android.content.Context
 import java.net.URLEncoder
 import java.util.concurrent.Executors
-import org.jsoup.Jsoup
 
 data class ToonResult(val title: String, val url: String, val chapters: Int, val detail: String)
 
@@ -103,15 +102,22 @@ class MainActivity : Activity() {
             for (term in queries) {
                 try {
                     val url = "https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(term, "UTF-8")
-                    val doc = Jsoup.connect(url).userAgent("Mozilla/5.0 (Android) AppleWebKit/537.36 Chrome/120 Safari/537.36").timeout(15000).get()
-                    for (a in doc.select("a.result__a")) {
-                        val href = a.absUrl("href")
-                        val title = a.text().trim()
+                    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) AppleWebKit/537.36 Chrome/120 Safari/537.36")
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 15000
+                    val html = connection.inputStream.bufferedReader().use { it.readText() }
+                    connection.disconnect()
+                    val resultBlocks = Regex("(?is)<div[^>]*class=[\\\"'][^\\\"']*result[^\\\"']*[\\\"'][^>]*>.*?</div>\\s*</div>").findAll(html)
+                    for (blockMatch in resultBlocks) {
+                        val block = blockMatch.value
+                        val linkMatch = Regex("(?is)<a[^>]*class=[\\\"'][^\\\"']*result__a[^\\\"']*[\\\"'][^>]*href=[\\\"']([^\\\"']+)[\\\"'][^>]*>(.*?)</a>").find(block) ?: continue
+                        val href = linkMatch.groupValues[1].replace("&amp;", "&")
+                        val title = linkMatch.groupValues[2].replace(Regex("<[^>]+>"), "").trim()
+                        val snippet = Regex("(?is)class=[\\\"'][^\\\"']*result__snippet[^\\\"']*[\\\"'][^>]*>(.*?)</").find(block)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"), "")?.trim().orEmpty()
+                        val all = "$title $snippet"
+                        val count = Regex("(?i)(?:cap[ií]tulos?|chapters?|eps(?:is[oó]dios?)?)\\s*[:#-]?\\s*(\\d{1,4})").findAll(all).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
                         if (href.startsWith("http") && title.isNotBlank() && !href.contains("duckduckgo.com")) {
-                            val parent = a.parents().firstOrNull { it.select(".result__snippet").isNotEmpty() }
-                            val snippet = parent?.select(".result__snippet")?.text().orEmpty()
-                            val all = "$title $snippet"
-                            val count = Regex("(?i)(?:cap[ií]tulos?|chapters?|eps(?:is[oó]dios?)?)\\s*[:#-]?\\s*(\\d{1,4})").findAll(all).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
                             val key = href.substringBefore("#").trimEnd('/')
                             found[key] = ToonResult(title, href, count, snippet)
                         }
