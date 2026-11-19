@@ -98,7 +98,16 @@ class MainActivity : Activity() {
         showResults()
         executor.execute {
             val found = linkedMapOf<String, ToonResult>()
-            val queries = listOf("$q webtoon capítulos ler português", "$q manhwa capítulos online português", "$q webtoon chapter")
+            // Busca aproximada por nome, termos relacionados e fontes conhecidas.
+            // Usa apenas resultados públicos; não contorna bloqueios ou paywalls.
+            val queries = listOf(
+                "\"$q\" webtoon português capítulos",
+                "$q webtoon ler em português capítulos",
+                "$q manhwa português episódios",
+                "$q webtoon chapter episodes",
+                "site:webtoons.com $q português",
+                "site:tapas.io $q português"
+            )
             for (term in queries) {
                 try {
                     val url = "https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(term, "UTF-8")
