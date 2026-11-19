@@ -134,7 +134,7 @@ class MainActivity : Activity() {
                         val key = href.substringBefore("#").trimEnd('/')
                         if (key.isNotBlank()) found.putIfAbsent(key, ToonResult(title, href, count, snippet))
                     }
-                } catch (e: Exception) { errors.add("$engine: \${e.javaClass.simpleName}") }
+                } catch (e: Exception) { errors.add("$engine: ${e.javaClass.simpleName}") }
             }
             val ordered = found.values.sortedWith(compareByDescending<ToonResult> { it.chapters }.thenBy { it.title })
             runOnUiThread {
@@ -146,7 +146,7 @@ class MainActivity : Activity() {
                         else "A pesquisa respondeu, mas não encontrou páginas para esse nome. Tente o título original ou uma variação."
                         setTextColor(Color.WHITE); textSize=15f; setPadding(8,20,8,20)
                     })
-                    info.text = "Nenhum resultado • \${errors.distinct().size} falhas de consulta"
+                    info.text = "Nenhum resultado • ${errors.distinct().size} falhas de consulta"
                 } else showSearchResults(ordered, q)
             }
         }
