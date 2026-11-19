@@ -14,6 +14,7 @@ import android.graphics.Typeface
 import android.content.Context
 import java.net.URLEncoder
 import java.util.concurrent.Executors
+import org.jsoup.Jsoup
 
 data class ToonResult(val title: String, val url: String, val chapters: Int, val detail: String)
 
@@ -94,57 +95,60 @@ class MainActivity : Activity() {
         val q = raw.trim()
         if (q.isEmpty()) { address.error = "Digite o nome do webtoon"; return }
         results.removeAllViews()
-        results.addView(TextView(this).apply { text = "Pesquisando em várias fontes…"; setTextColor(Color.WHITE); textSize=16f; setPadding(8,20,8,20) })
+        results.addView(TextView(this).apply { text = "Pesquisando em mecanismos diferentes…"; setTextColor(Color.WHITE); textSize=16f; setPadding(8,20,8,20) })
         showResults()
         executor.execute {
             val found = linkedMapOf<String, ToonResult>()
-            // Busca aproximada por nome, termos relacionados e fontes conhecidas.
-            // Usa apenas resultados públicos; não contorna bloqueios ou paywalls.
-            val queries = listOf(
-                "\"$q\" webtoon português capítulos",
-                "$q webtoon ler em português capítulos",
-                "$q manhwa português episódios",
-                "$q webtoon chapter episodes",
-                "site:webtoons.com $q português",
-                "site:tapas.io $q português"
+            val errors = mutableListOf<String>()
+            val queries = linkedSetOf(
+                "\"$q\" webtoon", "$q webtoon português ler", "$q manhwa português capítulos",
+                "$q quadrinho online português", "$q webtoon chapters episodes", "$q comic read online"
             )
-            for (term in queries) {
+            val engines = listOf("duckduckgo", "bing")
+            for (term in queries) for (engine in engines) {
                 try {
-                    val url = "https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(term, "UTF-8")
-                    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                    connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Android) AppleWebKit/537.36 Chrome/120 Safari/537.36")
-                    connection.connectTimeout = 15000
-                    connection.readTimeout = 15000
-                    val html = connection.inputStream.bufferedReader().use { it.readText() }
-                    connection.disconnect()
-                    // Extrai links individualmente; não depende da estrutura aninhada dos cartões.
-                    val anchors = Regex("(?is)<a\\b([^>]*)>(.*?)</a>").findAll(html)
-                    for (anchor in anchors) {
-                        val attrs = anchor.groupValues[1]
-                        val classes = Regex("(?i)class\\s*=\\s*[\"']([^\"']*)[\"']").find(attrs)?.groupValues?.get(1).orEmpty()
-                        if (!classes.contains("result__a")) continue
-                        var href = Regex("(?i)href\\s*=\\s*[\"']([^\"']+)[\"']").find(attrs)?.groupValues?.get(1) ?: continue
-                        href = href.replace("&amp;", "&")
+                    val base = if (engine == "duckduckgo") "https://html.duckduckgo.com/html/?q=" else "https://www.bing.com/search?q="
+                    val doc = Jsoup.connect(base + URLEncoder.encode(term, "UTF-8"))
+                        .userAgent("Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120.0.0.0 Mobile Safari/537.36")
+                        .header("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.7")
+                        .timeout(18000).followRedirects(true).maxBodySize(2 * 1024 * 1024).get()
+                    val anchors = if (engine == "duckduckgo") doc.select("a.result__a, a[data-testid=result-title-a]") else doc.select("li.b_algo h2 a, a[href].tilk")
+                    for (a in anchors) {
+                        var href = a.absUrl("href").ifBlank { a.attr("href") }.trim()
                         if (href.startsWith("//")) href = "https:$href"
                         if (href.contains("duckduckgo.com/l/")) {
                             val target = Regex("[?&]uddg=([^&]+)").find(href)?.groupValues?.get(1)
                             if (target != null) href = try { java.net.URLDecoder.decode(target, "UTF-8") } catch (_: Exception) { target }
                         }
-                        val title = anchor.groupValues[2].replace(Regex("<[^>]+>"), "").replace("&amp;", "&").replace("&quot;", "\"").trim()
-                        val tailStart = anchor.range.last + 1
-                        val tail = html.substring(tailStart, minOf(html.length, tailStart + 1800)).substringBefore("result__a")
-                        val snippet = Regex("(?is)result__snippet[^>]*>(.*?)</").find(tail)?.groupValues?.get(1)?.replace(Regex("<[^>]+>"), "")?.replace("&amp;", "&")?.trim().orEmpty()
+                        val uri = try { java.net.URI(href) } catch (_: Exception) { continue }
+                        if (uri.scheme !in listOf("http", "https")) continue
+                        val host = uri.host.orEmpty().lowercase()
+                        if (host.contains("duckduckgo.com") || host.contains("bing.com") || host.contains("google.com")) continue
+                        val title = a.text().trim()
+                        if (title.length < 3) continue
+                        val parent = a.parents().firstOrNull { it.text().length > title.length + 15 }
+                        val snippet = parent?.text()?.replace(title, "")?.trim()?.take(450).orEmpty()
                         val all = "$title $snippet"
-                        val count = Regex("(?i)(?:cap[ií]tulos?|chapters?|eps(?:is[oó]dios?)?)\\s*[:#-]?\\s*(\\d{1,4})").findAll(all).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
-                        if ((href.startsWith("http://") || href.startsWith("https://")) && title.isNotBlank() && !href.contains("duckduckgo.com")) {
-                            val key = href.substringBefore("#").trimEnd('/')
-                            found[key] = ToonResult(title, href, count, snippet)
-                        }
+                        val count = Regex("(?i)(?:cap[ií]tulos?|chapters?|eps(?:is[oó]dios?)?)\\s*[:#-]?\\s*(\\d{1,4})")
+                            .findAll(all).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
+                        val key = href.substringBefore("#").trimEnd('/')
+                        if (key.isNotBlank()) found.putIfAbsent(key, ToonResult(title, href, count, snippet))
                     }
-                } catch (_: Exception) { }
+                } catch (e: Exception) { errors.add("$engine: \${e.javaClass.simpleName}") }
             }
             val ordered = found.values.sortedWith(compareByDescending<ToonResult> { it.chapters }.thenBy { it.title })
-            runOnUiThread { showSearchResults(ordered, q) }
+            runOnUiThread {
+                if (ordered.isEmpty()) {
+                    results.removeAllViews()
+                    results.addView(TextView(this).apply {
+                        text = if (errors.size >= queries.size * engines.size)
+                            "Os mecanismos de pesquisa não responderam. Verifique a internet ou tente novamente em alguns minutos."
+                        else "A pesquisa respondeu, mas não encontrou páginas para esse nome. Tente o título original ou uma variação."
+                        setTextColor(Color.WHITE); textSize=15f; setPadding(8,20,8,20)
+                    })
+                    info.text = "Nenhum resultado • \${errors.distinct().size} falhas de consulta"
+                } else showSearchResults(ordered, q)
+            }
         }
     }
     private fun showSearchResults(items: List<ToonResult>, query: String) {
